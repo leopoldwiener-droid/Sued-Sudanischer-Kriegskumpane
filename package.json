@@ -1,0 +1,74 @@
+{
+  "name": "openchat",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.mjs",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node --experimental-strip-types --import ./scripts/register-ts-paths.mjs --test src/lib/*.test.ts",
+    "postinstall": "mkdir -p public && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs",
+    "electron:dev": "node electron/dev.mjs",
+    "electron:prepare": "node electron/prepare-standalone.mjs",
+    "electron:pack": "npm run build && npm run electron:prepare && electron-builder --dir",
+    "electron:dist": "npm run build && npm run electron:prepare && electron-builder",
+    "update": "node update.mjs"
+  },
+  "dependencies": {
+    "katex": "^0.17.0",
+    "next": "16.2.9",
+    "pdfjs-dist": "^6.0.227",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.openchat.app",
+    "productName": "Open Chat",
+    "icon": "assets/brand/icon.png",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "standalone"
+      },
+      {
+        "from": ".next/standalone/node_modules",
+        "to": "standalone/node_modules"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg", "zip"],
+      "extendInfo": {
+        "NSSupportsAutomaticGraphicsSwitching": true
+      }
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "target": ["AppImage"]
+    }
+  }
+}

@@ -1,0 +1,634 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PanelLeft, PanelLeftClose, SquarePen } from "@/components/icons";
+import { ChatComposer } from "./chat-composer";
+import { MessageItem } from "./message";
+import { TtsNowPlaying } from "./tts-now-playing";
+import type { SettingsTab, SettingsScrollTarget } from "./settings-dialog";
+import { useChat } from "@/hooks/use-chat";
+import { stopTts } from "@/hooks/use-message-tts";
+import { buildCacheSessionId, type PromptCacheUsage } from "@/lib/prompt-cache";
+import { useAttachments } from "@/hooks/use-attachments";
+import { useCharacters } from "@/hooks/use-characters";
+import { useLowPower } from "@/hooks/use-low-power";
+import { useModelCapabilities } from "@/hooks/use-model-capabilities";
+import { useConversations } from "@/hooks/use-conversations";
+import { useSidebarOpen } from "@/hooks/use-sidebar-open";
+import { useColorAccent } from "@/hooks/use-color-accent";
+import { useVisualViewport } from "@/hooks/use-visual-viewport";
+import { buildStableSystemPrompt, useSettings } from "@/hooks/use-settings";
+import {
+  buildCharacterGreeting,
+  buildPostHistoryInstructions,
+} from "@/lib/character-prompt";
+import { buildMemoryContextContent } from "@/lib/system-prompt";
+import { useMemories } from "@/hooks/use-memories";
+import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
+import { getActiveModel } from "@/lib/providers";
+import { CHATBOT, hasTranscript } from "@/lib/chatbot-config";
+import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
+import { cn } from "@/lib/utils";
+import type { ChatToolName, Message, MessageAttachment } from "@/lib/types";
+
+const SettingsDialog = dynamic(
+  () => import("./settings-dialog").then((m) => m.SettingsDialog),
+  { ssr: false },
+);
+
+const Sidebar = dynamic(
+  () => import("./sidebar").then((m) => m.Sidebar),
+  { ssr: false },
+);
+
+const SCROLL_STICK_THRESHOLD_PX = 80;
+
+export function Chat() {
+  useLowPower();
+  useVisualViewport();
+
+  const conv = useConversations();
+  const settingsHook = useSettings();
+  const memoriesHook = useMemories();
+  const charactersHook = useCharacters(settingsHook.settings.activeCharacterId);
+  useColorAccent(settingsHook.settings.colorAccent, settingsHook.hydrated);
+
+  const activeModel = getActiveModel(settingsHook.settings);
+  const modelCapabilities = useModelCapabilities({
+    provider: settingsHook.settings.provider,
+    model: activeModel,
+    apiKey: settingsHook.settings.openRouterApiKey,
+    ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
+  });
+
+  const toolsCapable = modelCapabilities.capabilities.tools;
+  // Wait for capabilities so we never send `tools` while still on the
+  // conservative default (tools: false) flip — or worse, a stale true.
+  const toolsReady = !modelCapabilities.loading && toolsCapable;
+  const memorySettingOn = settingsHook.settings.memory.enabled;
+  const webSearchSettingOn = settingsHook.settings.webSearch.enabled;
+  const enabledTools = useMemo((): ChatToolName[] => {
+    const tools: ChatToolName[] = [];
+    if (memorySettingOn && toolsReady) tools.push("save_memory");
+    if (webSearchSettingOn && toolsReady) tools.push("web_search");
+    return tools;
+  }, [memorySettingOn, webSearchSettingOn, toolsReady]);
+  const memoryToolsUnavailable =
+    memorySettingOn && !modelCapabilities.loading && !toolsCapable;
+  const webSearchToolsUnavailable =
+    webSearchSettingOn && !modelCapabilities.loading && !toolsCapable;
+
+  const activeCharacterData = charactersHook.activeCharacter?.data ?? null;
+  // Stable system for chat + meter; memories are a separate upstream user msg.
+  const stableSystemPrompt = buildStableSystemPrompt(
+    settingsHook.settings,
+    activeCharacterData,
+  );
+  const postHistoryInstructions = activeCharacterData
+    ? buildPostHistoryInstructions(activeCharacterData, settingsHook.settings.name)
+    : undefined;
+  const memoryContext = buildMemoryContextContent(
+    memoriesHook.memories,
+    settingsHook.settings.memory.enabled,
+  );
+  const cacheSessionId = buildCacheSessionId(conv.activeId, activeModel);
+  const settingsRef = useRef(settingsHook.settings);
+  const convRef = useRef(conv);
+  const lastUpsertRef = useRef<{ id: string; aiTitleGenerated: boolean } | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const stickToBottomRef = useRef(true);
+  const prevActiveCharacterIdRef = useRef<string | null | undefined>(undefined);
+  const characterPending =
+    Boolean(settingsHook.settings.activeCharacterId) && !charactersHook.hydrated;
+  const storageReady =
+    conv.hydrated &&
+    settingsHook.hydrated &&
+    memoriesHook.hydrated &&
+    !characterPending;
+
+  useEffect(() => {
+    settingsRef.current = settingsHook.settings;
+  }, [settingsHook.settings]);
+
+  useEffect(() => {
+    convRef.current = conv;
+  }, [conv]);
+
+  const [composerReset, setComposerReset] = useState(0);
+  const [lastCacheUsage, setLastCacheUsage] = useState<PromptCacheUsage | null>(null);
+
+  useEffect(() => {
+    setLastCacheUsage(null);
+  }, [conv.activeId, activeModel]);
+
+  useEffect(() => {
+    stopTts();
+  }, [conv.activeId]);
+
+  const chat = useChat({
+    systemPrompt: stableSystemPrompt,
+    memoryContext,
+    postHistoryInstructions,
+    provider: settingsHook.settings.provider,
+    model: activeModel,
+    apiKey: settingsHook.settings.openRouterApiKey,
+    ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
+    reasoning: settingsHook.settings.reasoning,
+    enabledTools,
+    promptCaching: settingsHook.settings.promptCaching,
+    promptCachingMode: modelCapabilities.capabilities.promptCaching,
+    zdrOnly: settingsHook.settings.zdrOnly,
+    sessionId: cacheSessionId,
+    onCacheUsage: setLastCacheUsage,
+    onSaveMemory: (content) => memoriesHook.tryAdd(content, "agent"),
+    onFinish: (_msg, all) => {
+      const saved = lastUpsertRef.current;
+      void convRef.current.maybeGenerateTitle(
+        saved?.id ?? null,
+        all,
+        settingsRef.current,
+      );
+    },
+    onMessagesChange: (msgs) => {
+      lastUpsertRef.current = convRef.current.upsertActive(msgs);
+    },
+  });
+
+  const attachmentsHook = useAttachments(
+    activeModel,
+    modelCapabilities.capabilities,
+    modelCapabilities.loading,
+  );
+
+  const sidebar = useSidebarOpen();
+  const [sidebarMounted, setSidebarMounted] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const [settingsScrollTo, setSettingsScrollTo] = useState<SettingsScrollTarget | null>(null);
+  const [visibleCount, setVisibleCount] = useState(VISIBLE_MESSAGE_LIMIT);
+  const [storageError, setStorageError] = useState(getStorageError());
+
+  const lastLoadedId = useRef<string | null>(null);
+  const setMessages = chat.setMessages;
+
+  useEffect(() => onStorageError(setStorageError), []);
+
+  useEffect(() => {
+    if (sidebar.open || sidebar.variant === "docked") setSidebarMounted(true);
+  }, [sidebar.open, sidebar.variant]);
+
+  const openSettings = (tab: SettingsTab = "general") => {
+    setSettingsTab(tab);
+    setSettingsScrollTo(null);
+    setSettingsOpen(true);
+  };
+
+  const openMemorySettings = useCallback(() => {
+    setSettingsTab("general");
+    setSettingsScrollTo("memory");
+    setSettingsOpen(true);
+  }, []);
+
+  const loadConversation = useCallback(
+    (id: string | null) => {
+      lastLoadedId.current = id;
+      const active = id ? conv.conversations.find((c) => c.id === id) : null;
+      setMessages(active?.messages ?? []);
+      setVisibleCount(VISIBLE_MESSAGE_LIMIT);
+      stickToBottomRef.current = true;
+    },
+    [conv.conversations, setMessages],
+  );
+
+  useEffect(() => {
+    if (!conv.hydrated) return;
+    const id = conv.activeId ?? null;
+    if (id === lastLoadedId.current) return;
+    // upsertActive assigns activeId on the first persist of a new chat. Reloading
+    // here would bump streamGen and abort the in-flight reply before tokens land.
+    if (chat.isStreaming && lastLoadedId.current === null && id !== null) {
+      lastLoadedId.current = id;
+      return;
+    }
+    loadConversation(id);
+  }, [conv.hydrated, conv.activeId, conv.conversations, chat.isStreaming, loadConversation]);
+
+  const selectConversation = useCallback(
+    (id: string) => {
+      if (id === conv.activeId) return;
+      conv.select(id);
+      loadConversation(id);
+    },
+    [conv, loadConversation],
+  );
+
+  const hiddenCount = Math.max(0, chat.messages.length - visibleCount);
+  const visibleMessages =
+    hiddenCount > 0 ? chat.messages.slice(-visibleCount) : chat.messages;
+
+  const onMainScroll = () => {
+    const el = mainRef.current;
+    if (!el) return;
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_STICK_THRESHOLD_PX;
+  };
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    const el = mainRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chat.messages, chat.isStreaming, visibleCount]);
+
+  const onSend = (text: string, files: MessageAttachment[]) => {
+    if (!storageReady) return;
+    stickToBottomRef.current = true;
+    chat.send(text, files);
+  };
+
+  const makeGreetingMessages = useCallback((): Message[] => {
+    const data = charactersHook.activeCharacter?.data;
+    if (!data) return [];
+    const text = buildCharacterGreeting(data, settingsHook.settings.name);
+    if (!text) return [];
+    return [
+      {
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        role: "assistant",
+        content: text,
+        createdAt: Date.now(),
+      },
+    ];
+  }, [charactersHook.activeCharacter, settingsHook.settings.name]);
+
+  const newChat = () => {
+    chat.setMessages(makeGreetingMessages());
+    lastLoadedId.current = null;
+    conv.createNew();
+    lastUpsertRef.current = null;
+    attachmentsHook.clear();
+    setComposerReset((n) => n + 1);
+    setVisibleCount(VISIBLE_MESSAGE_LIMIT);
+    stickToBottomRef.current = true;
+  };
+
+  // Drop a stale activeCharacterId if the card was deleted outside this session.
+  useEffect(() => {
+    if (!settingsHook.hydrated || !charactersHook.hydrated) return;
+    const id = settingsHook.settings.activeCharacterId;
+    if (!id) return;
+    if (charactersHook.characters.some((c) => c.id === id)) return;
+    settingsHook.update({ activeCharacterId: null });
+  }, [
+    settingsHook.hydrated,
+    charactersHook.hydrated,
+    charactersHook.characters,
+    settingsHook.settings.activeCharacterId,
+    settingsHook.update,
+  ]);
+
+  // Seed / replace the opening greeting when the active character changes.
+  // Only touch chats with no user turns so real history is never overwritten.
+  useEffect(() => {
+    if (!settingsHook.hydrated || !charactersHook.hydrated || !conv.hydrated) return;
+    if (chat.isStreaming) return;
+
+    const id = settingsHook.settings.activeCharacterId;
+    const prev = prevActiveCharacterIdRef.current;
+    const initial = prev === undefined;
+    const changed = !initial && prev !== id;
+    prevActiveCharacterIdRef.current = id;
+
+    if (!initial && !changed) return;
+    if (chat.messages.some((m) => m.role === "user")) return;
+
+    // Initial hydrate: only seed a brand-new empty composer — never race
+    // loadConversation and overwrite a saved chat that hasn't painted yet.
+    if (initial) {
+      if (conv.activeId != null) return;
+      if (chat.messages.length > 0) return;
+      if (!id) return;
+      const greeting = makeGreetingMessages();
+      if (greeting.length > 0) chat.setMessages(greeting);
+      return;
+    }
+
+    // Character switched or cleared — only mutate the unsaved new-chat composer.
+    // Never rewrite a loaded conversation's messages when the character changes.
+    if (conv.activeId != null) return;
+    if (!id) {
+      chat.setMessages([]);
+      return;
+    }
+    chat.setMessages(makeGreetingMessages());
+  }, [
+    settingsHook.hydrated,
+    charactersHook.hydrated,
+    conv.hydrated,
+    conv.activeId,
+    settingsHook.settings.activeCharacterId,
+    chat.isStreaming,
+    chat.messages,
+    chat.setMessages,
+    makeGreetingMessages,
+  ]);
+
+  const showHeaderNewChat = !sidebar.open || sidebar.variant === "overlay";
+
+  return (
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+      {sidebarMounted && (
+        <Sidebar
+          open={sidebar.open}
+          variant={sidebar.variant}
+          onOpenChange={sidebar.setOpen}
+          onNewChat={newChat}
+          conversations={conv.conversations}
+          activeId={conv.activeId}
+          onSelect={selectConversation}
+          onDelete={conv.remove}
+          onOpenSettings={() => openSettings("general")}
+        />
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        {settingsOpen && (
+          <SettingsDialog
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            settings={settingsHook.settings}
+            onSave={settingsHook.update}
+            memories={memoriesHook.memories}
+            onTryAddMemory={(content) => memoriesHook.tryAdd(content, "user")}
+            onRemoveMemory={memoriesHook.remove}
+            characters={charactersHook.characters}
+            charactersImporting={charactersHook.importing}
+            charactersImportError={charactersHook.importError}
+            onImportCharacter={charactersHook.importFile}
+            onRemoveCharacter={(id) => {
+              // Only remove from the library here. Draft selection is cleared in
+              // CharacterSettings; saved activeCharacterId is cleared by the
+              // orphan-cleanup effect once the card is gone (avoids resetting
+              // the open settings dialog via a settings write).
+              void charactersHook.remove(id);
+            }}
+            initialTab={settingsTab}
+            scrollTo={settingsScrollTo}
+            onScrolled={() => setSettingsScrollTo(null)}
+          />
+        )}
+
+        <header className="electron-header z-10 flex shrink-0 items-center">
+          <div className="electron-traffic-spacer" aria-hidden />
+          <div className="electron-no-drag flex items-center gap-0.5">
+            <IconButton
+              onClick={sidebar.toggle}
+              label={sidebar.open ? "Seitenleiste schließen" : "Seitenleiste öffnen"}
+              compact
+              aria-expanded={sidebar.open}
+            >
+              {sidebar.open ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
+            </IconButton>
+            {showHeaderNewChat && (
+              <IconButton onClick={newChat} label="Neuer Chat" compact>
+                <SquarePen size={17} />
+              </IconButton>
+            )}
+          </div>
+          <div className="electron-chrome-drag flex-1 self-stretch" aria-hidden="true" />
+        </header>
+
+        {storageError === "quota_exceeded" && (
+          <div className="shrink-0 px-4 pb-2">
+            <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <span>Storage is full. Oldest conversations may have been removed.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  clearStorageError();
+                  setStorageError(null);
+                }}
+                className="shrink-0 rounded px-2 py-0.5 text-xs hover:bg-destructive/10"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        <main
+          ref={mainRef}
+          onScroll={onMainScroll}
+          className="oc-chat-scroll min-h-0 flex-1 overflow-y-auto"
+        >
+          {chat.messages.length === 0 ? (
+            <EmptyState
+              needsApiKey={
+                settingsHook.hydrated &&
+                settingsHook.settings.provider === "openrouter" &&
+                !settingsHook.settings.openRouterApiKey.trim() &&
+                process.env.NEXT_PUBLIC_STATIC_EXPORT === "1"
+              }
+              onOpenProviders={() => openSettings("providers")}
+              onSuggestion={(text) => onSend(text, [])}
+              name={settingsHook.settings.name}
+              characterName={
+                activeCharacterData
+                  ? activeCharacterData.nickname?.trim() ||
+                    activeCharacterData.name.trim() ||
+                    undefined
+                  : undefined
+              }
+            />
+          ) : (
+            <div className="mx-auto w-full max-w-3xl px-4 py-4">
+              <div className="space-y-6">
+                {hiddenCount > 0 && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleCount((n) => n + LOAD_MORE_MESSAGE_STEP)
+                      }
+                      className="rounded-full border border-border bg-muted px-4 py-1.5 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                    >
+                      Ältere Nachrichten laden ({hiddenCount} ausgeblendet)
+                    </button>
+                  </div>
+                )}
+                {visibleMessages.map((m, i) => {
+                  const globalIndex = hiddenCount > 0 ? hiddenCount + i : i;
+                  return (
+                    <div key={m.id} className="message-row">
+                      <MessageItem
+                        message={m}
+                        isStreaming={
+                          chat.isStreaming &&
+                          m.role === "assistant" &&
+                          globalIndex === chat.messages.length - 1
+                        }
+                        collapseReasoningByDefault={
+                          settingsHook.settings.reasoning.collapseByDefault
+                        }
+                        onOpenMemorySettings={
+                          settingsHook.settings.memory.enabled
+                            ? openMemorySettings
+                            : undefined
+                        }
+                        ttsVoice={settingsHook.settings.tts.voice}
+                        openRouterApiKey={settingsHook.settings.openRouterApiKey}
+                        zdrOnly={settingsHook.settings.zdrOnly}
+                      />
+                    </div>
+                  );
+                })}
+                {chat.error && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {chat.error}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+
+        <div className="relative shrink-0">
+          <TtsNowPlaying
+            voice={settingsHook.settings.tts.voice}
+            onVoiceChange={(voice) => settingsHook.update({ tts: { voice } })}
+          />
+          <ChatComposer
+            messages={chat.messages}
+            isStreaming={chat.isStreaming}
+            systemPrompt={stableSystemPrompt}
+            memoryContext={memoryContext}
+            postHistoryInstructions={postHistoryInstructions}
+            contextTokens={modelCapabilities.capabilities.contextTokens}
+            promptCachingMode={modelCapabilities.capabilities.promptCaching}
+            lastCacheUsage={lastCacheUsage}
+            modelCapabilitiesLoading={modelCapabilities.loading}
+            modelCapabilitiesError={modelCapabilities.error}
+            memoryToolsUnavailable={memoryToolsUnavailable}
+            webSearchToolsUnavailable={webSearchToolsUnavailable}
+            settings={settingsHook.settings}
+            attachmentsHook={attachmentsHook}
+            onSend={onSend}
+            onStop={chat.stop}
+            resetSignal={composerReset}
+            ready={storageReady}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IconButton({
+  children,
+  label,
+  onClick,
+  compact = false,
+  "aria-expanded": ariaExpanded,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  compact?: boolean;
+  "aria-expanded"?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      aria-expanded={ariaExpanded}
+      className={cn(
+        "grid place-items-center rounded-lg text-muted-foreground transition",
+        compact ? "size-8 coarse:size-11" : "size-9 coarse:size-11",
+        "hover:bg-muted hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EmptyState({
+  name,
+  characterName,
+  needsApiKey,
+  onOpenProviders,
+  onSuggestion,
+}: {
+  name: string;
+  characterName?: string;
+  needsApiKey: boolean;
+  onOpenProviders: () => void;
+  onSuggestion: (text: string) => void;
+}) {
+  const greeting = name.trim() ? `Hallo ${name.trim()}!` : CHATBOT.name;
+  const audioSrc = CHATBOT.audioFile
+    ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/${CHATBOT.audioFile}`
+    : null;
+  return (
+    <div className="flex h-full min-h-[40dvh] items-center justify-center px-6 py-8">
+      <div className="w-full max-w-xl text-center">
+        <h1 className="text-2xl font-medium tracking-tight [html.has-color-accent_&]:text-primary">
+          {greeting}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {characterName
+            ? `Du chattest mit ${characterName}. Sag Hallo, um zu starten.`
+            : CHATBOT.tagline}
+        </p>
+
+        {audioSrc && (
+          <div className="mt-6 rounded-xl border border-border bg-muted/40 p-3 text-left">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              Originalaufnahme anhören
+            </p>
+            <audio controls preload="metadata" src={audioSrc} className="w-full" />
+          </div>
+        )}
+
+        {!hasTranscript() && (
+          <p className="mt-4 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+            Das Transkript der Aufnahme wurde noch nicht eingefügt
+            (<code>src/lib/chatbot-config.ts</code>).
+          </p>
+        )}
+
+        {needsApiKey ? (
+          <div className="mt-6 rounded-xl border border-border p-4 text-sm">
+            <p className="text-muted-foreground">
+              Damit der Bot antworten kann, brauchst du einen kostenlosen
+              OpenRouter-API-Key. Er wird nur in deinem Browser gespeichert.
+            </p>
+            <button
+              type="button"
+              onClick={onOpenProviders}
+              className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+            >
+              API-Key eintragen
+            </button>
+          </div>
+        ) : (
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {CHATBOT.suggestions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onSuggestion(s)}
+                className="rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

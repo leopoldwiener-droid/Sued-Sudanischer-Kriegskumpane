@@ -1,0 +1,240 @@
+export type ChatRole = "system" | "user" | "assistant" | "tool";
+
+export type ChatContentPart =
+  | { type: "text"; text: string; cache_control?: { type: "ephemeral"; ttl?: "1h" } }
+  | { type: "image_url"; image_url: { url: string } };
+
+export type ToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
+export type ToolCallDelta = {
+  index?: number;
+  id?: string;
+  type?: string;
+  function?: { name?: string; arguments?: string };
+};
+
+export type ChatMessage = {
+  role: ChatRole;
+  content?: string | ChatContentPart[] | null;
+  reasoning?: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+};
+
+export type ReasoningDetail = {
+  type?: string;
+  text?: string;
+  summary?: string;
+};
+
+export type ChatCompletionDelta = {
+  content?: string | null;
+  reasoning?: string;
+  reasoning_content?: string;
+  thinking?: string;
+  reasoning_details?: ReasoningDetail[];
+  tool_calls?: ToolCallDelta[];
+};
+
+export type ChatCompletionChunk = {
+  choices: Array<{
+    delta?: ChatCompletionDelta;
+    finish_reason?: string | null;
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      cache_write_tokens?: number;
+    };
+  };
+};
+
+export type ChatCompletionResponse = {
+  choices: Array<{
+    message?: {
+      content?: string | null;
+    };
+  }>;
+};
+
+export type ChatToolDefinition = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+export type ChatCompletionRequest = {
+  model: string;
+  messages: ChatMessage[];
+  stream?: boolean;
+  reasoning?: unknown;
+  include_reasoning?: boolean;
+  think?: boolean;
+  tools?: ChatToolDefinition[];
+  tool_choice?: "auto" | "none";
+  cache_control?: { type: "ephemeral"; ttl?: "1h" };
+  session_id?: string;
+  stream_options?: { include_usage: boolean };
+  /** OpenRouter provider routing prefs (e.g. ZDR-only). */
+  provider?: { zdr?: boolean };
+};
+
+export type AiClientOptions = {
+  apiKey: string;
+  baseURL: string;
+  headers?: Record<string, string>;
+};
+
+export type AiRequestOptions = {
+  signal?: AbortSignal;
+};
+
+/** Thrown when the provider rejects the request before any tokens stream. */
+export class UpstreamHttpError extends Error {
+  readonly status: number;
+  readonly body: string;
+
+  constructor(status: number, body: string) {
+    super(formatUpstreamError(status, body));
+    this.name = "UpstreamHttpError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+function formatUpstreamError(status: number, body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return `Upstream request failed (${status}).`;
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      error?: { message?: string; code?: number | string };
+      message?: string;
+    };
+    const message = parsed.error?.message ?? parsed.message;
+    if (typeof message === "string" && message.trim()) return message.trim();
+  } catch {
+    // Not JSON — fall through.
+  }
+  return trimmed;
+}
+
+async function* readSseChunks(
+  response: Response,
+  signal?: AbortSignal,
+): AsyncGenerator<ChatCompletionChunk> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Upstream response has no body.");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        await reader.cancel().catch(() => {});
+        break;
+      }
+
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data:")) continue;
+
+        const payload = trimmed.slice(5).trim();
+        if (payload === "[DONE]") return;
+
+        try {
+          yield JSON.parse(payload) as ChatCompletionChunk;
+        } catch {
+          // Skip malformed SSE chunks.
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOptions) {
+  const root = baseURL.replace(/\/$/, "");
+
+  async function request<T>(
+    body: ChatCompletionRequest,
+    options: AiRequestOptions = {},
+  ): Promise<T> {
+    const response = await fetch(`${root}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        ...(body.session_id ? { "x-session-id": body.session_id } : {}),
+        ...headers,
+      },
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new UpstreamHttpError(response.status, text);
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  return {
+    async complete(
+      body: Omit<ChatCompletionRequest, "stream">,
+      options: AiRequestOptions = {},
+    ): Promise<ChatCompletionResponse> {
+      return request<ChatCompletionResponse>({ ...body, stream: false }, options);
+    },
+
+    /**
+     * Opens the upstream SSE stream. Awaits the HTTP response first so auth /
+     * routing errors (401, 404 tools, …) reject here — not mid-pipe as
+     * "failed to pipe response".
+     */
+    async stream(
+      body: Omit<ChatCompletionRequest, "stream">,
+      options: AiRequestOptions = {},
+    ): Promise<AsyncGenerator<ChatCompletionChunk>> {
+      const response = await fetch(`${root}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          ...(body.session_id ? { "x-session-id": body.session_id } : {}),
+          ...headers,
+        },
+        body: JSON.stringify({ ...body, stream: true }),
+        signal: options.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new UpstreamHttpError(response.status, text);
+      }
+
+      return readSseChunks(response, options.signal);
+    },
+  };
+}

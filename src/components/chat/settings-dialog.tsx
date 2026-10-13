@@ -1,0 +1,479 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { Brain, Palette, Search, User, Volume2, X } from "@/components/icons";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogPanel } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { applyColorAccent } from "@/lib/color-accent";
+import { REASONING_EFFORT_LABELS, REASONING_EFFORTS } from "@/lib/openrouter";
+import {
+  GROK_TTS_VOICE_HINTS,
+  GROK_TTS_VOICE_LABELS,
+  GROK_TTS_VOICES,
+} from "@/lib/tts";
+import type {
+  CharacterCard,
+  GrokTtsVoice,
+  Memory,
+  ReasoningEffort,
+  TitleGenerationSettings,
+  UserSettings,
+} from "@/lib/types";
+import type { SaveMemoryResult } from "@/lib/memory-tools";
+import { cn } from "@/lib/utils";
+import { CharacterSettings } from "./character-settings";
+import { ColorAccentPicker } from "./color-accent-picker";
+import { MemorySettings } from "./memory-settings";
+import {
+  SettingsField,
+  SettingsSection,
+  SettingsTabButton,
+  SettingsToggleRow,
+} from "./settings-ui";
+
+const ProvidersSettings = dynamic(
+  () => import("./providers-settings").then((m) => m.ProvidersSettings),
+  { ssr: false },
+);
+
+const TitleSettings = dynamic(
+  () => import("./title-settings").then((m) => m.TitleSettings),
+  { ssr: false },
+);
+
+export type SettingsTab = "general" | "providers";
+export type SettingsScrollTarget = "memory";
+
+type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  settings: UserSettings;
+  onSave: (patch: Partial<UserSettings>) => void;
+  memories: Memory[];
+  onTryAddMemory: (content: string) => SaveMemoryResult;
+  onRemoveMemory: (id: string) => void;
+  characters: CharacterCard[];
+  charactersImporting: boolean;
+  charactersImportError: string | null;
+  onImportCharacter: (file: File) => Promise<CharacterCard | null>;
+  onRemoveCharacter: (id: string) => void;
+  initialTab?: SettingsTab;
+  scrollTo?: SettingsScrollTarget | null;
+  onScrolled?: () => void;
+};
+
+export function SettingsDialog({
+  open,
+  onOpenChange,
+  settings,
+  onSave,
+  memories,
+  onTryAddMemory,
+  onRemoveMemory,
+  characters,
+  charactersImporting,
+  charactersImportError,
+  onImportCharacter,
+  onRemoveCharacter,
+  initialTab = "general",
+  scrollTo = null,
+  onScrolled,
+}: Props) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
+  const [name, setName] = useState(settings.name);
+  const [instructions, setInstructions] = useState(settings.customInstructions);
+  const [activeCharacterId, setActiveCharacterId] = useState<string | null>(
+    settings.activeCharacterId,
+  );
+  const [provider, setProvider] = useState(settings.provider);
+  const [apiKey, setApiKey] = useState(settings.openRouterApiKey);
+  const [model, setModel] = useState(settings.model);
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.ollamaBaseUrl);
+  const [ollamaModel, setOllamaModel] = useState(settings.ollamaModel);
+  const [reasoningEnabled, setReasoningEnabled] = useState(settings.reasoning.enabled);
+  const [reasoningEffort, setReasoningEffort] = useState(settings.reasoning.effort);
+  const [showReasoning, setShowReasoning] = useState(settings.reasoning.showInResponse);
+  const [collapseReasoning, setCollapseReasoning] = useState(settings.reasoning.collapseByDefault);
+  const [titleGeneration, setTitleGeneration] = useState<TitleGenerationSettings>(
+    settings.titleGeneration,
+  );
+  const [memorySettings, setMemorySettings] = useState(settings.memory);
+  const [webSearchSettings, setWebSearchSettings] = useState(settings.webSearch);
+  const [promptCaching, setPromptCaching] = useState(settings.promptCaching);
+  const [zdrOnly, setZdrOnly] = useState(settings.zdrOnly);
+  const [ttsVoice, setTtsVoice] = useState(settings.tts.voice);
+  const [colorAccent, setColorAccent] = useState<string | null>(settings.colorAccent);
+  const previewAccentRef = useRef<string | null>(settings.colorAccent);
+  const memorySectionRef = useRef<HTMLDivElement>(null);
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (!open || scrollTo !== "memory") return;
+    const frame = requestAnimationFrame(() => {
+      memorySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      onScrolled?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, scrollTo, onScrolled]);
+
+  // Hydrate draft state only when the dialog opens — not on every settings
+  // change while open (e.g. deleting a card clears activeCharacterId).
+  useEffect(() => {
+    const justOpened = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (!justOpened) return;
+    setTab(initialTab);
+    setName(settings.name);
+    setInstructions(settings.customInstructions);
+    setActiveCharacterId(settings.activeCharacterId);
+    setProvider(settings.provider);
+    setApiKey(settings.openRouterApiKey);
+    setModel(settings.model);
+    setOllamaBaseUrl(settings.ollamaBaseUrl);
+    setOllamaModel(settings.ollamaModel);
+    setReasoningEnabled(settings.reasoning.enabled);
+    setReasoningEffort(settings.reasoning.effort);
+    setShowReasoning(settings.reasoning.showInResponse);
+    setCollapseReasoning(settings.reasoning.collapseByDefault);
+    setTitleGeneration(settings.titleGeneration);
+    setMemorySettings(settings.memory);
+    setWebSearchSettings(settings.webSearch);
+    setPromptCaching(settings.promptCaching);
+    setZdrOnly(settings.zdrOnly);
+    setTtsVoice(settings.tts.voice);
+    setColorAccent(settings.colorAccent);
+    previewAccentRef.current = settings.colorAccent;
+  }, [open, settings, initialTab]);
+
+  const previewAccent = (next: string | null) => {
+    setColorAccent(next);
+    applyColorAccent(next);
+  };
+
+  const closeDialog = (restorePreview = true) => {
+    if (restorePreview) applyColorAccent(previewAccentRef.current);
+    onOpenChange(false);
+  };
+
+  const save = () => {
+    onSave({
+      name: name.trim(),
+      customInstructions: instructions,
+      activeCharacterId,
+      colorAccent,
+      provider,
+      openRouterApiKey: apiKey.trim(),
+      model: model.trim(),
+      ollamaBaseUrl: ollamaBaseUrl.trim(),
+      ollamaModel: ollamaModel.trim(),
+      reasoning: {
+        enabled: reasoningEnabled,
+        effort: reasoningEffort,
+        showInResponse: showReasoning,
+        collapseByDefault: collapseReasoning,
+      },
+      titleGeneration,
+      memory: memorySettings,
+      webSearch: webSearchSettings,
+      promptCaching,
+      zdrOnly,
+      tts: { voice: ttsVoice },
+    });
+    previewAccentRef.current = colorAccent;
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : closeDialog())}>
+      <DialogPanel>
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0 pr-2">
+            <h2 className="text-base font-semibold">Settings</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Stored locally in your browser. API keys stay on this device until sent to your
+              chosen provider.
+            </p>
+            <div className="mt-3 flex gap-1.5">
+              <SettingsTabButton active={tab === "general"} onClick={() => setTab("general")}>
+                General
+              </SettingsTabButton>
+              <SettingsTabButton active={tab === "providers"} onClick={() => setTab("providers")}>
+                Model providers
+              </SettingsTabButton>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => closeDialog()}
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+          {tab === "general" ? (
+            <div className="space-y-6">
+              <SettingsSection
+                icon={User}
+                title="Personalization"
+                description="How the assistant addresses you."
+              >
+                <SettingsField label="Your name">
+                  <Input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Ada"
+                  />
+                </SettingsField>
+                <SettingsField label="Custom instructions">
+                  <textarea
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="Tone, format, things to remember about you…"
+                    rows={3}
+                    className={cn(
+                      "w-full resize-y rounded-lg border border-border bg-muted px-2.5 py-2 text-sm text-foreground outline-none",
+                      "placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                    )}
+                  />
+                </SettingsField>
+              </SettingsSection>
+
+              <Separator />
+
+              <CharacterSettings
+                characters={characters}
+                activeCharacterId={activeCharacterId}
+                importing={charactersImporting}
+                importError={charactersImportError}
+                onImportFile={onImportCharacter}
+                onSelect={setActiveCharacterId}
+                onRemove={onRemoveCharacter}
+                onImported={(card) => setActiveCharacterId(card.id)}
+              />
+
+              <Separator />
+
+              <div ref={memorySectionRef}>
+                <MemorySettings
+                  memorySettings={memorySettings}
+                  onMemorySettingsChange={(patch) =>
+                    setMemorySettings((prev) => ({ ...prev, ...patch }))
+                  }
+                  memories={memories}
+                  onTryAddMemory={onTryAddMemory}
+                  onRemoveMemory={onRemoveMemory}
+                />
+              </div>
+
+              <Separator />
+
+              <SettingsSection
+                icon={Search}
+                title="Web search"
+                description="Let the model look up current information via DuckDuckGo. No commercial search API key — results are fetched through a local proxy."
+              >
+                <SettingsToggleRow
+                  label="Enable web search"
+                  description="Gives the model a web_search tool when the model supports tools. Cites sources inline as [1], [2], …"
+                  checked={webSearchSettings.enabled}
+                  onChange={(enabled) =>
+                    setWebSearchSettings((prev) => ({ ...prev, enabled }))
+                  }
+                />
+                {webSearchSettings.enabled && (
+                  <p className="rounded-xl border border-border bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                    Uses DuckDuckGo HTML results when available, with Instant Answer
+                    as a fallback. Personal / open-source use only — not a production
+                    SERP product.
+                  </p>
+                )}
+              </SettingsSection>
+
+              <Separator />
+
+              <SettingsSection
+                icon={Palette}
+                title="Color accents"
+                description="Tint buttons, focus rings, and highlights with a personal accent color."
+              >
+                <ColorAccentPicker value={colorAccent} onChange={previewAccent} />
+              </SettingsSection>
+
+              <Separator />
+
+              <SettingsSection
+                icon={Brain}
+                title="Reasoning"
+                description="Extended thinking for supported models (Hermes 4, o-series, DeepSeek R1, Qwen thinking, etc.)."
+              >
+                <SettingsToggleRow
+                  label="Enable reasoning"
+                  description="Let the model think before answering."
+                  checked={reasoningEnabled}
+                  onChange={setReasoningEnabled}
+                />
+
+                {reasoningEnabled && (
+                  <div className="space-y-3 rounded-xl border border-border bg-muted p-3">
+                    <SettingsField label="Effort">
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {REASONING_EFFORTS.map((effort) => (
+                          <EffortButton
+                            key={effort}
+                            effort={effort}
+                            selected={reasoningEffort === effort}
+                            onSelect={() => setReasoningEffort(effort)}
+                          />
+                        ))}
+                      </div>
+                    </SettingsField>
+
+                    <SettingsToggleRow
+                      label="Show reasoning in chat"
+                      description="Display the model's thinking above its reply."
+                      checked={showReasoning}
+                      onChange={setShowReasoning}
+                    />
+
+                    <SettingsToggleRow
+                      label="Collapse reasoning by default"
+                      description="Hide thinking once the answer appears. Expand any message manually."
+                      checked={collapseReasoning}
+                      onChange={setCollapseReasoning}
+                    />
+                  </div>
+                )}
+              </SettingsSection>
+
+              <Separator />
+
+              <SettingsSection
+                icon={Volume2}
+                title="Read aloud"
+                description="Text-to-speech for assistant replies via Grok Voice on OpenRouter."
+              >
+                <SettingsField
+                  label="Voice"
+                  hint="Uses x-ai/grok-voice-tts-1.0. Requires an OpenRouter API key."
+                >
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    {GROK_TTS_VOICES.map((voice) => (
+                      <VoiceButton
+                        key={voice}
+                        voice={voice}
+                        selected={ttsVoice === voice}
+                        onSelect={() => setTtsVoice(voice)}
+                      />
+                    ))}
+                  </div>
+                </SettingsField>
+              </SettingsSection>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <ProvidersSettings
+                provider={provider}
+                onProviderChange={setProvider}
+                apiKey={apiKey}
+                onApiKeyChange={setApiKey}
+                model={model}
+                onModelChange={setModel}
+                ollamaBaseUrl={ollamaBaseUrl}
+                onOllamaBaseUrlChange={setOllamaBaseUrl}
+                ollamaModel={ollamaModel}
+                onOllamaModelChange={setOllamaModel}
+                promptCaching={promptCaching}
+                onPromptCachingChange={setPromptCaching}
+                zdrOnly={zdrOnly}
+                onZdrOnlyChange={setZdrOnly}
+              />
+
+              <Separator />
+
+              <TitleSettings
+                titleGeneration={titleGeneration}
+                onTitleGenerationChange={(patch) =>
+                  setTitleGeneration((prev) => ({ ...prev, ...patch }))
+                }
+                ollamaBaseUrl={ollamaBaseUrl}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => closeDialog()}
+            className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <Button type="button" size="sm" onClick={save}>
+            Save changes
+          </Button>
+        </div>
+      </DialogPanel>
+    </Dialog>
+  );
+}
+
+function VoiceButton({
+  voice,
+  selected,
+  onSelect,
+}: {
+  voice: GrokTtsVoice;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "rounded-md border px-2 py-2 text-left transition",
+        selected
+          ? "border-foreground bg-muted text-foreground"
+          : "border-border bg-card text-muted-foreground hover:border-foreground/15 hover:bg-muted hover:text-foreground",
+      )}
+    >
+      <span className="block text-[11px] font-medium">{GROK_TTS_VOICE_LABELS[voice]}</span>
+      <span className="mt-0.5 block text-[10px] leading-snug opacity-80">
+        {GROK_TTS_VOICE_HINTS[voice]}
+      </span>
+    </button>
+  );
+}
+
+function EffortButton({
+  effort,
+  selected,
+  onSelect,
+}: {
+  effort: ReasoningEffort;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "rounded-md border px-2 py-1.5 text-[11px] font-medium transition",
+        selected
+          ? "border-foreground bg-muted text-foreground"
+          : "border-border bg-card text-muted-foreground hover:border-foreground/15 hover:bg-muted hover:text-foreground",
+      )}
+    >
+      {REASONING_EFFORT_LABELS[effort]}
+    </button>
+  );
+}

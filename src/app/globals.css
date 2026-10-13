@@ -1,0 +1,232 @@
+@import "tailwindcss";
+@import "./animations.css";
+@import "./tokens.css";
+
+@custom-variant dark (&:is(.dark *));
+@custom-variant coarse (@media (hover: none) and (pointer: coarse));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --keyboard-offset: 0px;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(0.32 0 0);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+    overscroll-behavior: none;
+  }
+}
+
+.oc-chat-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.oc-composer-pad {
+  padding-bottom: calc(max(0.75rem, var(--safe-bottom)) + var(--keyboard-offset, 0px));
+}
+
+/* KaTeX — theme-aware math rendering */
+.prose-chat .katex {
+  color: inherit;
+  font-size: 1.05em;
+}
+
+.prose-chat .katex-display {
+  @apply my-4 overflow-x-auto;
+}
+
+.math-display-block {
+  @apply my-4 overflow-x-auto text-center;
+}
+
+.math-display-block > .katex-display {
+  margin: 0;
+}
+
+.math-inline {
+  @apply mx-0.5;
+}
+
+.katex-error {
+  @apply rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-[0.85em] text-destructive;
+}
+
+.message-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
+/* Electron frameless chrome — web keeps the plain header; macOS insets live under
+   html.electron-macos so a wiped inline var still leaves room for traffic lights. */
+.electron-header {
+  padding: max(0.5rem, var(--safe-top)) 0.5rem 0.5rem;
+  padding-left: max(0.5rem, var(--safe-left));
+  padding-right: max(0.5rem, var(--safe-right));
+  height: auto;
+}
+
+.electron-traffic-spacer {
+  width: 0;
+  flex-shrink: 0;
+}
+
+html.electron-macos .electron-header {
+  padding: var(--electron-header-padding, 0 0.75rem 0 0);
+  height: var(--electron-chrome-h, 52px);
+  -webkit-app-region: var(--electron-app-region, drag);
+}
+
+html.electron-macos .electron-traffic-spacer {
+  width: var(--electron-safe-left, 108px);
+}
+
+html.electron-macos .electron-no-drag {
+  -webkit-app-region: var(--electron-no-drag-region, no-drag);
+}
+
+html.electron-macos .electron-chrome-drag {
+  min-height: var(--electron-chrome-h, 52px);
+}
+
+html.electron-macos .electron-sidebar {
+  padding-top: var(--electron-chrome-h, 52px);
+}
+
+/* Docked sidebar is a flex column (no shadow); overlay drawer keeps shadow-lg in sidebar.tsx */
+
+/* Desktop low-power mode: the Electron shell toggles `.low-power` on <html>
+   (on battery, hidden, or minimized — see electron/preload.js). Drop the
+   GPU-expensive glass blur to save power; restored on AC / when visible. */
+html.low-power *,
+html.low-power *::before,
+html.low-power *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Chromium does not throttle CSS animations for a blurred-but-visible window, so
+   the infinite stream-cursor / skeleton pulse would keep the compositor awake on
+   battery. Freeze it (spinners are left alone — a frozen one reads as a hang). */
+html.low-power .animate-pulse {
+  animation: none !important;
+}
