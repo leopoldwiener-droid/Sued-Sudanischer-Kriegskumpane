@@ -18,10 +18,16 @@ Datei speichern, committen und pushen. GitHub baut die Seite dann automatisch ne
 - Einmalig im Repo: **Settings → Pages → Source: „GitHub Actions“**
 - Jeder Push auf `main` startet `.github/workflows/deploy.yml` und veröffentlicht die Seite unter
   `https://<benutzername>.github.io/<repo-name>/`
-- GitHub Pages hat keinen Server. Deshalb trägt jede:r Nutzer:in auf der Seite unter
-  **Einstellungen → Model providers** einen eigenen
-  [OpenRouter-API-Key](https://openrouter.ai/keys) ein. Der Key wird nur im Browser gespeichert,
-  **niemals** in den Code schreiben!
+- Das Modell kommt von **unserem eigenen Provider** (kein API-Key). Adresse und Modellname stehen in
+  `chatbot-config.ts` bei `provider`, alternativ kann man sie auf der Seite unter
+  **Einstellungen → Model providers → Eigener Provider** eintragen.
+  - Der Provider muss OpenAI-kompatibel sein: `POST <url>/v1/chat/completions` mit `stream: true`
+    (z. B. Ollama, LM Studio, llama.cpp-Server oder ein eigener Python-Server).
+  - Der Provider muss **CORS** für `https://<benutzername>.github.io` erlauben
+    (bei Ollama: Umgebungsvariable `OLLAMA_ORIGINS=*`).
+  - Die Seite läuft über `https`. Der Provider muss deshalb auch `https` haben, oder auf
+    `localhost` laufen.
+- OpenRouter mit API-Key geht weiterhin als Alternative. Einen Key **niemals** in den Code schreiben!
 - Websuche funktioniert auf GitHub Pages nicht (die Suche braucht einen Server).
 
 ---

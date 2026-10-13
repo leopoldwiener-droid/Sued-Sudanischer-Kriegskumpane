@@ -424,12 +424,7 @@ export function Chat() {
         >
           {chat.messages.length === 0 ? (
             <EmptyState
-              needsApiKey={
-                settingsHook.hydrated &&
-                settingsHook.settings.provider === "openrouter" &&
-                !settingsHook.settings.openRouterApiKey.trim() &&
-                process.env.NEXT_PUBLIC_STATIC_EXPORT === "1"
-              }
+              needsProvider={settingsHook.hydrated && !activeModel}
               onOpenProviders={() => openSettings("providers")}
               onSuggestion={(text) => onSend(text, [])}
               name={settingsHook.settings.name}
@@ -558,13 +553,13 @@ function IconButton({
 function EmptyState({
   name,
   characterName,
-  needsApiKey,
+  needsProvider,
   onOpenProviders,
   onSuggestion,
 }: {
   name: string;
   characterName?: string;
-  needsApiKey: boolean;
+  needsProvider: boolean;
   onOpenProviders: () => void;
   onSuggestion: (text: string) => void;
 }) {
@@ -600,18 +595,18 @@ function EmptyState({
           </p>
         )}
 
-        {needsApiKey ? (
+        {needsProvider ? (
           <div className="mt-6 rounded-xl border border-border p-4 text-sm">
             <p className="text-muted-foreground">
-              Damit der Bot antworten kann, brauchst du einen kostenlosen
-              OpenRouter-API-Key. Er wird nur in deinem Browser gespeichert.
+              Es ist noch kein Modell verbunden. Trag die Adresse und das Modell
+              eures Providers ein.
             </p>
             <button
               type="button"
               onClick={onOpenProviders}
               className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
             >
-              API-Key eintragen
+              Provider einstellen
             </button>
           </div>
         ) : (

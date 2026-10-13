@@ -9,6 +9,7 @@ import {
 } from "@/lib/attachment-store";
 import type { Conversation, Memory, Message, MessageAttachment, UserSettings } from "./types";
 import { isGrokTtsVoice } from "./tts";
+import { CHATBOT } from "./chatbot-config";
 
 const KEY_LEGACY_CONVERSATIONS = "openchat:conversations";
 const KEY_CONV_INDEX = "openchat:conv-index";
@@ -70,11 +71,13 @@ export const DEFAULT_SETTINGS: UserSettings = {
   customInstructions: "",
   colorAccent: null,
   activeCharacterId: null,
-  provider: "openrouter",
+  // Default = the team's own provider from chatbot-config (OpenAI-compatible,
+  // no key). It reuses the "ollama" provider path, which is exactly that.
+  provider: "ollama",
   openRouterApiKey: "",
   model: "",
-  ollamaBaseUrl: "http://localhost:11434",
-  ollamaModel: "",
+  ollamaBaseUrl: CHATBOT.provider.url.trim() || "http://localhost:11434",
+  ollamaModel: CHATBOT.provider.model.trim(),
   reasoning: {
     enabled: false,
     effort: "medium",
@@ -83,7 +86,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   },
   titleGeneration: {
     enabled: true,
-    provider: "openrouter",
+    provider: "ollama",
     model: "",
   },
   memory: {

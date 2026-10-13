@@ -88,7 +88,7 @@ export function ProvidersSettings({
           <ProviderCard
             icon={HardDrive}
             label={PROVIDER_LABELS.ollama}
-            description="Local models on your machine"
+            description="Euer Modell, kein API-Key nötig"
             selected={provider === "ollama"}
             onSelect={() => onProviderChange("ollama")}
           />
@@ -225,16 +225,17 @@ export function ProvidersSettings({
       ) : (
         <SettingsSection
           icon={HardDrive}
-          title="Ollama"
-          description="Run models locally with Ollama. No API key required."
+          title={PROVIDER_LABELS.ollama}
+          description="Jeder OpenAI-kompatible Server (Ollama, LM Studio, llama.cpp, eigener Server …). Kein API-Key nötig."
         >
           <SettingsField
-            label="Base URL"
+            label="Server-Adresse"
             hint={
               <span>
-                Default is <code className="text-[10px]">http://localhost:11434</code>. On a phone
-                or tablet, use a URL reachable from this device (e.g.{" "}
-                <code className="text-[10px]">http://192.168.1.10:11434</code>).
+                Ohne <code className="text-[10px]">/v1</code>, z. B.{" "}
+                <code className="text-[10px]">http://localhost:11434</code>. Die Seite ruft{" "}
+                <code className="text-[10px]">/v1/chat/completions</code> auf; der Server muss
+                CORS erlauben.
               </span>
             }
           >
@@ -249,14 +250,8 @@ export function ProvidersSettings({
           </SettingsField>
 
           <SettingsField
-            label="Model"
-            hint={
-              <span>
-                Pull models with{" "}
-                <code className="text-[10px]">ollama pull &lt;model&gt;</code>, then refresh the
-                list.
-              </span>
-            }
+            label="Modell"
+            hint="Name des Modells, wie euer Server ihn erwartet. „Refresh“ lädt die Liste (nur bei Ollama)."
           >
             <div className="flex gap-2">
               {ollamaModels.length > 0 ? (

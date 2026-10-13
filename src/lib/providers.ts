@@ -3,13 +3,14 @@ import type { ModelProvider, UserSettings } from "./types";
 
 export const PROVIDER_LABELS: Record<ModelProvider, string> = {
   openrouter: "OpenRouter",
-  ollama: "Ollama",
+  ollama: "Eigener Provider",
 };
 
 export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 
 export function normalizeOllamaBaseUrl(url: string): string {
-  return url.trim().replace(/\/+$/, "") || DEFAULT_OLLAMA_BASE_URL;
+  // Tolerate a pasted ".../v1" — the client appends /v1 itself.
+  return url.trim().replace(/\/+$/, "").replace(/\/v1$/, "") || DEFAULT_OLLAMA_BASE_URL;
 }
 
 export function getActiveModel(settings: UserSettings): string {

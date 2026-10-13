@@ -16,6 +16,21 @@ export const CHATBOT = {
   /** Kurzer Untertitel auf der Startseite. */
   tagline: "Stell mir Fragen zu unserer Sprachaufnahme.",
 
+  /**
+   * Euer eigener Modell-Provider (kein API-Key nötig).
+   * Er muss eine OpenAI-kompatible Schnittstelle haben: Die Seite schickt die
+   * Nachrichten per POST an `<url>/v1/chat/completions` (mit `stream: true`).
+   * Das können z. B. Ollama, LM Studio, llama.cpp oder ein eigener Python-Server.
+   *  • url:   Adresse des Servers ohne /v1, z. B. "http://localhost:11434"
+   *  • model: Name des Modells, wie der Server ihn erwartet
+   * Der Server muss CORS für die GitHub-Pages-Adresse erlauben.
+   * Leer lassen = man stellt es auf der Seite unter Einstellungen ein.
+   */
+  provider: {
+    url: "",
+    model: "",
+  },
+
   /** Dateiname in `public/` (z. B. "aufnahme.mp3") — leer lassen = kein Player. */
   audioFile: "",
 
