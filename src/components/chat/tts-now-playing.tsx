@@ -117,7 +117,7 @@ export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
         <div className="relative">
           <button
             type="button"
-            onClick={() => setVoiceOpen((o) => !o)}
+            onClick={() => playback.voice && setVoiceOpen((o) => !o)}
             className={cn(
               "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition",
               "hover:bg-muted",
@@ -126,8 +126,8 @@ export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
             aria-expanded={voiceOpen}
             aria-label="Voice"
           >
-            {GROK_TTS_VOICE_LABELS[activeVoice]}
-            <ChevronDown size={12} className="opacity-70" />
+            {playback.voice ? GROK_TTS_VOICE_LABELS[activeVoice] : "Browser-Stimme"}
+            {playback.voice && <ChevronDown size={12} className="opacity-70" />}
           </button>
 
           {voiceOpen && (

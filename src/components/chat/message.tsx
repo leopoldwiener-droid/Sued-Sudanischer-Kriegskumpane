@@ -206,8 +206,8 @@ function AssistantMessage({
             )}
             aria-label={
               ttsStatus === "idle" || ttsStatus === "loading"
-                ? "Read aloud"
-                : "Stop read aloud"
+                ? "Vorlesen"
+                : "Vorlesen stoppen"
             }
           >
             {ttsStatus === "loading" ? (
@@ -217,12 +217,12 @@ function AssistantMessage({
             )}
             <span>
               {ttsStatus === "loading"
-                ? "Loading"
+                ? "Lädt"
                 : ttsStatus === "playing"
-                  ? "Playing"
+                  ? "Spricht"
                   : ttsStatus === "paused"
-                    ? "Paused"
-                    : "Read aloud"}
+                    ? "Pausiert"
+                    : "Vorlesen"}
             </span>
           </button>
           <button
@@ -235,7 +235,7 @@ function AssistantMessage({
             aria-label="Copy reply"
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
-            <span>{copied ? "Copied" : "Copy"}</span>
+            <span>{copied ? "Kopiert" : "Kopieren"}</span>
           </button>
         </div>
       )}

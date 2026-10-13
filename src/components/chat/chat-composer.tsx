@@ -33,7 +33,7 @@ type Props = {
   webSearchToolsUnavailable?: boolean;
   settings: UserSettings;
   attachmentsHook: AttachmentsHook;
-  onSend: (text: string, files: MessageAttachment[]) => void;
+  onSend: (text: string, files: MessageAttachment[], viaVoice?: boolean) => void;
   onStop: () => void;
   /** Increment to clear the draft (e.g. new chat). */
   resetSignal?: number;
@@ -231,6 +231,12 @@ export function ChatComposer({
           onPaste={attachmentsHook.handlePaste}
           isProcessingAttachments={attachmentsHook.isProcessing}
           hasUnsupportedAttachments={attachmentsHook.hasUnsupported}
+          hideAttach={STICHWORT_MODUS}
+          onVoiceSend={(text) => {
+            if (!ready || isStreaming) return;
+            setInput("");
+            onSend(text, [], true);
+          }}
         />
         <p className="pointer-events-none pt-2 text-center text-[10px] text-muted-foreground">
           {STICHWORT_MODUS

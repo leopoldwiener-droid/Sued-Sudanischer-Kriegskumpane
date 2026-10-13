@@ -2,13 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelLeft, PanelLeftClose, SquarePen } from "@/components/icons";
+import { PanelLeft, PanelLeftClose, SquarePen, Volume2, VolumeX } from "@/components/icons";
 import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
 import { TtsNowPlaying } from "./tts-now-playing";
 import type { SettingsTab, SettingsScrollTarget } from "./settings-dialog";
 import { useChat } from "@/hooks/use-chat";
-import { stopTts } from "@/hooks/use-message-tts";
+import { playMessageTts, stopTts } from "@/hooks/use-message-tts";
 import { buildCacheSessionId, type PromptCacheUsage } from "@/lib/prompt-cache";
 import { useAttachments } from "@/hooks/use-attachments";
 import { useCharacters } from "@/hooks/use-characters";
@@ -31,6 +31,7 @@ import { CHATBOT, hasTranscript, STICHWORT_MODUS } from "@/lib/chatbot-config";
 import { BOT } from "@/lib/wissen";
 
 const SUGGESTIONS_COLLAPSED = 6;
+const AUTO_SPEAK_KEY = "openchat:auto-speak";
 import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import type { ChatToolName, Message, MessageAttachment } from "@/lib/types";
@@ -119,6 +120,27 @@ export function Chat() {
   }, [conv]);
 
   const [composerReset, setComposerReset] = useState(0);
+  const speakNextReplyRef = useRef(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+
+  useEffect(() => {
+    try {
+      setAutoSpeak(localStorage.getItem(AUTO_SPEAK_KEY) === "1");
+    } catch {
+      // Storage blocked — default off.
+    }
+  }, []);
+
+  const toggleAutoSpeak = () => {
+    const next = !autoSpeak;
+    setAutoSpeak(next);
+    if (!next) stopTts();
+    try {
+      localStorage.setItem(AUTO_SPEAK_KEY, next ? "1" : "0");
+    } catch {
+      // Ignore — only a convenience.
+    }
+  };
   const [lastCacheUsage, setLastCacheUsage] = useState<PromptCacheUsage | null>(null);
 
   useEffect(() => {
@@ -145,7 +167,18 @@ export function Chat() {
     sessionId: cacheSessionId,
     onCacheUsage: setLastCacheUsage,
     onSaveMemory: (content) => memoriesHook.tryAdd(content, "agent"),
-    onFinish: (_msg, all) => {
+    onFinish: (msg, all) => {
+      // Gesprochene Frage (oder Vorlesen-Schalter an) → Antwort vorlesen.
+      if (speakNextReplyRef.current) {
+        speakNextReplyRef.current = false;
+        void playMessageTts(
+          msg.id,
+          msg.content,
+          settingsRef.current.tts.voice,
+          settingsRef.current.openRouterApiKey,
+          settingsRef.current.zdrOnly,
+        );
+      }
       const saved = lastUpsertRef.current;
       void convRef.current.maybeGenerateTitle(
         saved?.id ?? null,
@@ -244,9 +277,11 @@ export function Chat() {
     el.scrollTop = el.scrollHeight;
   }, [chat.messages, chat.isStreaming, visibleCount]);
 
-  const onSend = (text: string, files: MessageAttachment[]) => {
+  const onSend = (text: string, files: MessageAttachment[], viaVoice = false) => {
     if (!storageReady) return;
     stickToBottomRef.current = true;
+    stopTts();
+    speakNextReplyRef.current = viaVoice || autoSpeak;
     chat.send(text, files);
   };
 
@@ -400,6 +435,16 @@ export function Chat() {
             )}
           </div>
           <div className="electron-chrome-drag flex-1 self-stretch" aria-hidden="true" />
+          <div className="electron-no-drag flex items-center pr-2">
+            <IconButton
+              onClick={toggleAutoSpeak}
+              label={autoSpeak ? "Antworten nicht mehr vorlesen" : "Alle Antworten vorlesen"}
+              compact
+              aria-pressed={autoSpeak}
+            >
+              {autoSpeak ? <Volume2 size={17} /> : <VolumeX size={17} />}
+            </IconButton>
+          </div>
         </header>
 
         {storageError === "quota_exceeded" && (
@@ -528,12 +573,14 @@ function IconButton({
   onClick,
   compact = false,
   "aria-expanded": ariaExpanded,
+  "aria-pressed": ariaPressed,
 }: {
   children: React.ReactNode;
   label: string;
   onClick: () => void;
   compact?: boolean;
   "aria-expanded"?: boolean;
+  "aria-pressed"?: boolean;
 }) {
   return (
     <button
@@ -542,6 +589,7 @@ function IconButton({
       aria-label={label}
       title={label}
       aria-expanded={ariaExpanded}
+      aria-pressed={ariaPressed}
       className={cn(
         "grid place-items-center rounded-lg text-muted-foreground transition",
         compact ? "size-8 coarse:size-11" : "size-9 coarse:size-11",

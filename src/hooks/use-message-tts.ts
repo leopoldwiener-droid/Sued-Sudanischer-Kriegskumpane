@@ -47,7 +47,50 @@ function emit(next: TtsSnapshot) {
   for (const listener of listeners) listener();
 }
 
+// ── Browser-Stimme (speechSynthesis) — Standard, wenn kein OpenRouter-Key da ist.
+//    Kostenlos, kein Server. Für eine eigene Stimme: hier austauschen.
+let browserUtterance: SpeechSynthesisUtterance | null = null;
+
+function pickGermanVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  return (
+    voices.find((v) => v.lang === "de-DE" && /google|natural|online/i.test(v.name)) ??
+    voices.find((v) => v.lang.startsWith("de")) ??
+    null
+  );
+}
+
+function speakInBrowser(messageId: string, text: string, gen: number) {
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    failTts("Dieser Browser kann nicht vorlesen.");
+    return;
+  }
+  cleanupAudio();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "de-DE";
+  utterance.rate = snapshot.rate;
+  const voice = pickGermanVoice();
+  if (voice) utterance.voice = voice;
+  utterance.onend = () => {
+    if (gen === generation) stopTts();
+  };
+  utterance.onerror = (e) => {
+    if (gen === generation && e.error !== "interrupted" && e.error !== "canceled") {
+      failTts("Vorlesen hat nicht geklappt.");
+    }
+  };
+  browserUtterance = utterance;
+  window.speechSynthesis.speak(utterance);
+  emit({ messageId, status: "playing", rate: snapshot.rate, voice: null, error: null });
+}
+
 function cleanupAudio() {
+  if (browserUtterance) {
+    browserUtterance.onend = null;
+    browserUtterance.onerror = null;
+    browserUtterance = null;
+    window.speechSynthesis?.cancel();
+  }
   if (audio) {
     audio.onended = null;
     audio.onerror = null;
@@ -214,16 +257,30 @@ export async function playMessageTts(
   if (!text) return;
 
   const gen = ++generation;
+  if (!apiKey.trim()) {
+    speakInBrowser(messageId, text, gen);
+    return;
+  }
   await synthesizeAndPlay(messageId, text, voice, apiKey, zdrOnly, gen);
 }
 
 export function pauseTts() {
+  if (browserUtterance && snapshot.status === "playing") {
+    window.speechSynthesis.pause();
+    emit({ ...snapshot, status: "paused" });
+    return;
+  }
   if (!audio || snapshot.status !== "playing") return;
   audio.pause();
   emit({ ...snapshot, status: "paused" });
 }
 
 export function resumeTts() {
+  if (browserUtterance && snapshot.status === "paused") {
+    window.speechSynthesis.resume();
+    emit({ ...snapshot, status: "playing" });
+    return;
+  }
   if (!audio || snapshot.status !== "paused") return;
   void audio.play().then(
     () => {
@@ -255,7 +312,7 @@ export function cycleTtsRate() {
 }
 
 export async function changeTtsVoice(voice: GrokTtsVoice) {
-  if (!snapshot.messageId || !cached) {
+  if (!snapshot.messageId || !cached || browserUtterance) {
     emit({ ...snapshot, voice });
     return;
   }

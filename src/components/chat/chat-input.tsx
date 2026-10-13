@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent } from "react";
-import { ArrowUp, Plus, Square } from "@/components/icons";
+import { ArrowUp, Mic, Plus, Square } from "@/components/icons";
+import { useSpeechInput } from "@/hooks/use-speech-input";
+import { stopTts } from "@/hooks/use-message-tts";
 import { AttachmentPreviewList } from "./attachment-preview";
 import { ACCEPTED_FILE_TYPES } from "@/lib/attachments";
 import { cn, glassPill } from "@/lib/utils";
@@ -20,6 +22,9 @@ type Props = {
   onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   isProcessingAttachments?: boolean;
   hasUnsupportedAttachments?: boolean;
+  /** Gesprochene Frage fertig erkannt → direkt senden. */
+  onVoiceSend?: (text: string) => void;
+  hideAttach?: boolean;
 };
 
 export function ChatInput({
@@ -35,9 +40,16 @@ export function ChatInput({
   onPaste,
   isProcessingAttachments = false,
   hasUnsupportedAttachments = false,
+  onVoiceSend,
+  hideAttach = false,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const speech = useSpeechInput({
+    onInterim: onChange,
+    onFinal: (text) => onVoiceSend?.(text),
+  });
+  const showMic = Boolean(onVoiceSend) && speech.supported;
 
   useEffect(() => {
     const el = ref.current;
@@ -93,19 +105,21 @@ export function ChatInput({
           }}
         />
 
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={isStreaming || disabled}
-          aria-label="Attach files"
-          title="Attach images, PDFs, or code files"
-          className={cn(
-            "mb-0.5 grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition coarse:size-11",
-            "hover:bg-accent hover:text-foreground disabled:opacity-40",
-          )}
-        >
-          <Plus size={18} />
-        </button>
+        {!hideAttach && (
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={isStreaming || disabled}
+            aria-label="Attach files"
+            title="Attach images, PDFs, or code files"
+            className={cn(
+              "mb-0.5 grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition coarse:size-11",
+              "hover:bg-accent hover:text-foreground disabled:opacity-40",
+            )}
+          >
+            <Plus size={18} />
+          </button>
+        )}
 
         <textarea
           ref={ref}
@@ -118,7 +132,7 @@ export function ChatInput({
               ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
             });
           }}
-          placeholder="Deine Frage …"
+          placeholder={speech.listening ? "Ich höre zu …" : "Deine Frage …"}
           rows={1}
           disabled={disabled}
           className={cn(
@@ -126,6 +140,31 @@ export function ChatInput({
             "placeholder:text-muted-foreground",
           )}
         />
+
+        {showMic && !isStreaming && (
+          <button
+            type="button"
+            onClick={() => {
+              if (speech.listening) {
+                speech.stop();
+              } else {
+                stopTts();
+                speech.start();
+              }
+            }}
+            disabled={disabled}
+            aria-label={speech.listening ? "Zuhören beenden" : "Frage sprechen"}
+            title={speech.listening ? "Zuhören beenden" : "Frage sprechen"}
+            className={cn(
+              "grid size-9 shrink-0 place-items-center rounded-full transition coarse:size-11 disabled:opacity-40",
+              speech.listening
+                ? "animate-pulse bg-red-500 text-white"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            <Mic size={17} />
+          </button>
+        )}
 
         {isStreaming ? (
           <button
@@ -152,6 +191,15 @@ export function ChatInput({
           </button>
         )}
       </form>
+      {speech.error && (
+        <button
+          type="button"
+          onClick={speech.clearError}
+          className="mt-2 w-full text-center text-xs text-destructive"
+        >
+          {speech.error}
+        </button>
+      )}
     </div>
   );
 }
