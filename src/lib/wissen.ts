@@ -30,6 +30,8 @@ export const BOT = {
   hinweis: 'Schulprojekt im Informatikunterricht. Der Bot sucht nur nach Stichwörtern und gibt gespeicherte Antworten aus einem Interview wieder – er versteht nichts und kann sich irren.',
   /** true = unter jeder Antwort stehen die gefundenen Stichwörter. */
   zeigeTreffer: false,
+  /** Passt eine Frage zu mehreren Einträgen: so viele Antworten werden kombiniert (1 = nur die beste). */
+  maxAntworten: 3,
 };
 
 export const WISSEN: WissensEintrag[] = [

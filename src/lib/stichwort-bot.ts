@@ -32,31 +32,37 @@ function passt(stichwort: string, normText: string, woerter: string[]): boolean 
 
 export type Treffer = { eintrag: WissensEintrag; gefunden: string[]; laenge: number };
 
-// Beste Antwort suchen: meiste Treffer, bei Gleichstand die längsten Stichwörter.
-export function finde(frage: string): Treffer | null {
+// Alle passenden Einträge, bester zuerst: meiste Treffer, bei Gleichstand die
+// längsten Stichwörter (bei völligem Gleichstand gewinnt der frühere Eintrag).
+export function findeAlle(frage: string): Treffer[] {
   const normText = normalisiere(frage);
   const woerter = normText.split(" ");
-  let beste: Treffer | null = null;
+  const alle: Treffer[] = [];
   for (const eintrag of WISSEN) {
     const gefunden = eintrag.stichwoerter.filter((s) => passt(s, normText, woerter));
     if (gefunden.length === 0) continue;
     const laenge = gefunden.reduce((summe, s) => summe + normalisiere(s).length, 0);
-    if (
-      !beste ||
-      gefunden.length > beste.gefunden.length ||
-      (gefunden.length === beste.gefunden.length && laenge > beste.laenge)
-    ) {
-      beste = { eintrag, gefunden, laenge };
-    }
+    alle.push({ eintrag, gefunden, laenge });
   }
-  return beste;
+  return alle.sort(
+    (a, b) => b.gefunden.length - a.gefunden.length || b.laenge - a.laenge,
+  );
 }
 
+export function finde(frage: string): Treffer | null {
+  return findeAlle(frage)[0] ?? null;
+}
+
+// Passt die Frage zu mehreren Einträgen, werden bis zu BOT.maxAntworten
+// Interview-Antworten zu einer längeren Antwort zusammengesetzt.
 export function antworte(frage: string): string {
-  const treffer = finde(frage);
-  const text = treffer ? treffer.eintrag.antwort : BOT.unbekannt;
+  const treffer = findeAlle(frage).slice(0, Math.max(1, BOT.maxAntworten));
+  if (treffer.length === 0) {
+    return BOT.zeigeTreffer ? `${BOT.unbekannt}\n\n*Gefundene Stichwörter: keine*` : BOT.unbekannt;
+  }
+  const text = treffer.map((t) => t.eintrag.antwort).join("\n\n");
   if (!BOT.zeigeTreffer) return text;
-  const info = treffer ? treffer.gefunden.join(", ") : "keine";
+  const info = [...new Set(treffer.flatMap((t) => t.gefunden))].join(", ");
   return `${text}\n\n*Gefundene Stichwörter: ${info}*`;
 }
 
