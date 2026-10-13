@@ -417,7 +417,7 @@ export function Chat() {
           />
         )}
 
-        <header className="electron-header z-10 flex shrink-0 items-center">
+        <header className="electron-header z-10 flex shrink-0 items-center border-b border-border/60 md:border-b-0">
           <div className="electron-traffic-spacer" aria-hidden />
           <div className="electron-no-drag flex items-center gap-0.5">
             <IconButton
@@ -434,8 +434,18 @@ export function Chat() {
               </IconButton>
             )}
           </div>
-          <div className="electron-chrome-drag flex-1 self-stretch" aria-hidden="true" />
-          <div className="electron-no-drag flex items-center pr-2">
+          {/* Bot-Name wie in einer Chat-App: auf dem Handy immer, am PC sobald gechattet wird. */}
+          <div className="electron-chrome-drag flex min-w-0 flex-1 items-center justify-center self-stretch px-2">
+            <span
+              className={cn(
+                "truncate text-sm font-semibold tracking-tight",
+                chat.messages.length === 0 && "md:hidden",
+              )}
+            >
+              {CHATBOT.name}
+            </span>
+          </div>
+          <div className="electron-no-drag flex items-center">
             <IconButton
               onClick={toggleAutoSpeak}
               label={autoSpeak ? "Antworten nicht mehr vorlesen" : "Alle Antworten vorlesen"}
@@ -623,12 +633,14 @@ function EmptyState({
     ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/${CHATBOT.audioFile}`
     : null;
   return (
-    <div className="flex h-full min-h-[40dvh] items-center justify-center px-6 py-8">
+    // Handy: Inhalt unten beim Eingabefeld wie in einer Chat-App (Name steht in der Kopfzeile).
+    // PC: zentriert mit großer Überschrift.
+    <div className="flex h-full min-h-[40dvh] items-end justify-center px-4 py-4 md:items-center md:px-6 md:py-8">
       <div className="w-full max-w-xl text-center">
-        <h1 className="text-2xl font-medium tracking-tight [html.has-color-accent_&]:text-primary">
+        <h1 className="hidden text-2xl font-medium tracking-tight md:block [html.has-color-accent_&]:text-primary">
           {greeting}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground md:mt-2">
           {characterName
             ? `Du chattest mit ${characterName}. Sag Hallo, um zu starten.`
             : CHATBOT.tagline}
@@ -636,7 +648,7 @@ function EmptyState({
 
         {STICHWORT_MODUS && (
           <>
-            <p className="mt-6 rounded-2xl bg-muted px-4 py-3 text-left text-sm">
+            <p className="mt-4 mr-8 rounded-2xl rounded-bl-md bg-muted px-4 py-3 text-left text-sm md:mt-6 md:mr-0 md:rounded-bl-2xl">
               {BOT.begruessung}
             </p>
             <p className="mt-3 text-xs text-muted-foreground">{BOT.hinweis}</p>
@@ -674,7 +686,21 @@ function EmptyState({
             </button>
           </div>
         ) : (
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <>
+          {/* Handy: alle Fragen als wischbare Leiste. */}
+          <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden">
+            {CHATBOT.suggestions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onSuggestion(s)}
+                className="shrink-0 whitespace-nowrap rounded-full border border-border bg-muted px-3.5 py-2 text-sm text-foreground active:bg-accent"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <div className="mt-6 hidden flex-wrap justify-center gap-2 md:flex">
             {suggestions.map((s) => (
               <button
                 key={s}
@@ -697,6 +723,7 @@ function EmptyState({
               </button>
             )}
           </div>
+          </>
         )}
       </div>
     </div>
