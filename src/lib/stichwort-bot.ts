@@ -60,7 +60,8 @@ export function antworte(frage: string): string {
   if (treffer.length === 0) {
     return BOT.zeigeTreffer ? `${BOT.unbekannt}\n\n*Gefundene Stichwörter: keine*` : BOT.unbekannt;
   }
-  const text = treffer.map((t) => t.eintrag.antwort).join("\n\n");
+  // Ein zusammenhängender Absatz liest (und klingt beim Vorlesen) flüssiger als Einzelblöcke.
+  const text = treffer.map((t) => t.eintrag.antwort).join(" ");
   if (!BOT.zeigeTreffer) return text;
   const info = [...new Set(treffer.flatMap((t) => t.gefunden))].join(", ");
   return `${text}\n\n*Gefundene Stichwörter: ${info}*`;
