@@ -4,9 +4,13 @@ Chatbot-Website zu unserer Sprachaufnahme, gebaut auf der Vorlage **Open Chat**.
 
 ## Für das Team: Bot anpassen
 
-Alles Wichtige steht in **einer** Datei: [`src/lib/chatbot-config.ts`](src/lib/chatbot-config.ts)
+Der Bot ist ein **Stichwort-Bot** (ohne KI). Fragen, Stichwörter und Antworten stehen in
+[`src/lib/wissen.ts`](src/lib/wissen.ts), die Suche selbst in [`src/lib/stichwort-bot.ts`](src/lib/stichwort-bot.ts).
 
-- `TRANSCRIPT`: hier das fertige Transkript der Aufnahme einfügen
+Weitere Einstellungen stehen in [`src/lib/chatbot-config.ts`](src/lib/chatbot-config.ts):
+
+- `modus`: `"stichwort"` (Mini-Chatbot) oder `"ki"` (KI-Modell über den eigenen Provider)
+- `TRANSCRIPT`: das Transkript der Aufnahme (wird im KI-Modus verwendet)
 - `instructions`: wie sich der Bot verhalten soll
 - `name`, `tagline`, `suggestions`: Texte auf der Startseite
 - `audioFile`: Audiodatei in den Ordner `public/` legen und hier den Dateinamen eintragen

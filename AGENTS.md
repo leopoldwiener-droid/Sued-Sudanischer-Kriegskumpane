@@ -80,6 +80,7 @@ There is **no SSE framing, no JSON envelope protocol, no SDK** between model and
 
 - `STATIC_EXPORT=1` (`next.config.ts`) builds `out/` with `pageExtensions: ["tsx"]` so `route.ts` handlers are skipped; the browser runs them via `src/lib/api-fetch.ts`. Call `/api/*` only through `apiFetch` — never raw `fetch` — and prefix `public/` asset URLs with `NEXT_PUBLIC_BASE_PATH`.
 - Bot persona + transcript live in `src/lib/chatbot-config.ts` and are prepended in `buildStableSystemPrompt`.
+- `CHATBOT.modus === "stichwort"` short-circuits `apiFetch`: `/api/chat` is answered by `src/lib/stichwort-bot.ts` (keyword match over `src/lib/wissen.ts`) as an NDJSON stream — no provider involved.
 
 ### Provider changes
 

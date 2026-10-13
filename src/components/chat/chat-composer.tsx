@@ -7,6 +7,7 @@ import { ContextUsage } from "./context-usage";
 import { useContextUsage } from "@/hooks/use-context-usage";
 import type { useAttachments } from "@/hooks/use-attachments";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
+import { STICHWORT_MODUS } from "@/lib/chatbot-config";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
 import { unsupportedReason } from "@/lib/model-capabilities";
 import type { PromptCachingMode, PromptCacheUsage } from "@/lib/prompt-cache";
@@ -159,7 +160,7 @@ export function ChatComposer({
   return (
     <div className="oc-composer-pad z-20 shrink-0 pt-3">
       <div className="mx-auto w-full max-w-3xl px-4">
-        {settings.reasoning.enabled ? (
+        {STICHWORT_MODUS ? null : settings.reasoning.enabled ? (
           <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
             <span
               className={glassPill(
@@ -232,7 +233,9 @@ export function ChatComposer({
           hasUnsupportedAttachments={attachmentsHook.hasUnsupported}
         />
         <p className="pointer-events-none pt-2 text-center text-[10px] text-muted-foreground">
-          The model can make mistakes. Verify important information.
+          {STICHWORT_MODUS
+            ? "Der Bot sucht nur nach Stichwörtern und kann sich irren."
+            : "Die KI kann Fehler machen. Wichtiges bitte überprüfen."}
         </p>
       </div>
     </div>

@@ -8,7 +8,11 @@
 //  The API key then comes from the user's settings (localStorage) only.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Handler = (req: Request) => Promise<Response>;
+import { STICHWORT_MODUS } from "@/lib/chatbot-config";
+import { DEFAULT_CAPABILITIES } from "@/lib/model-capabilities";
+import { stichwortChatResponse } from "@/lib/stichwort-bot";
+
+type Handler =(req: Request) => Promise<Response>;
 type RouteModule = { GET?: Handler; POST?: Handler };
 
 const STATIC_EXPORT = process.env.NEXT_PUBLIC_STATIC_EXPORT === "1";
@@ -26,9 +30,22 @@ const ROUTES: Record<string, () => Promise<RouteModule>> = STATIC_EXPORT
   : {};
 
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const url = new URL(path, window.location.origin);
+
+  // Stichwort-Modus: kein Modell — der Mini-Chatbot antwortet direkt hier.
+  if (STICHWORT_MODUS) {
+    if (url.pathname === "/api/chat") {
+      return stichwortChatResponse(new Request(url, init));
+    }
+    if (url.pathname === "/api/models/capabilities") {
+      return Response.json(DEFAULT_CAPABILITIES);
+    }
+    // Keine KI für Chat-Titel — use-conversations behält den Titel aus der ersten Frage.
+    return new Response("Im Stichwort-Modus nicht verfügbar.", { status: 501 });
+  }
+
   if (!STATIC_EXPORT) return fetch(path, init);
 
-  const url = new URL(path, window.location.origin);
   const load = ROUTES[url.pathname];
   if (!load) return new Response(`Unknown API route: ${url.pathname}`, { status: 404 });
 

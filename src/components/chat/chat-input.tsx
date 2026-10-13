@@ -118,7 +118,7 @@ export function ChatInput({
               ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
             });
           }}
-          placeholder="Message…"
+          placeholder="Deine Frage …"
           rows={1}
           disabled={disabled}
           className={cn(

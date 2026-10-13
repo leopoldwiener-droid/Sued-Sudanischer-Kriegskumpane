@@ -27,7 +27,10 @@ import { buildMemoryContextContent } from "@/lib/system-prompt";
 import { useMemories } from "@/hooks/use-memories";
 import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
 import { getActiveModel } from "@/lib/providers";
-import { CHATBOT, hasTranscript } from "@/lib/chatbot-config";
+import { CHATBOT, hasTranscript, STICHWORT_MODUS } from "@/lib/chatbot-config";
+import { BOT } from "@/lib/wissen";
+
+const SUGGESTIONS_COLLAPSED = 6;
 import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import type { ChatToolName, Message, MessageAttachment } from "@/lib/types";
@@ -424,7 +427,7 @@ export function Chat() {
         >
           {chat.messages.length === 0 ? (
             <EmptyState
-              needsProvider={settingsHook.hydrated && !activeModel}
+              needsProvider={!STICHWORT_MODUS && settingsHook.hydrated && !activeModel}
               onOpenProviders={() => openSettings("providers")}
               onSuggestion={(text) => onSend(text, [])}
               name={settingsHook.settings.name}
@@ -563,6 +566,10 @@ function EmptyState({
   onOpenProviders: () => void;
   onSuggestion: (text: string) => void;
 }) {
+  const [showAll, setShowAll] = useState(false);
+  const suggestions = showAll
+    ? CHATBOT.suggestions
+    : CHATBOT.suggestions.slice(0, SUGGESTIONS_COLLAPSED);
   const greeting = name.trim() ? `Hallo ${name.trim()}!` : CHATBOT.name;
   const audioSrc = CHATBOT.audioFile
     ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/${CHATBOT.audioFile}`
@@ -579,6 +586,15 @@ function EmptyState({
             : CHATBOT.tagline}
         </p>
 
+        {STICHWORT_MODUS && (
+          <>
+            <p className="mt-6 rounded-2xl bg-muted px-4 py-3 text-left text-sm">
+              {BOT.begruessung}
+            </p>
+            <p className="mt-3 text-xs text-muted-foreground">{BOT.hinweis}</p>
+          </>
+        )}
+
         {audioSrc && (
           <div className="mt-6 rounded-xl border border-border bg-muted/40 p-3 text-left">
             <p className="mb-2 text-xs font-medium text-muted-foreground">
@@ -588,7 +604,7 @@ function EmptyState({
           </div>
         )}
 
-        {!hasTranscript() && (
+        {!STICHWORT_MODUS && !hasTranscript() && (
           <p className="mt-4 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
             Das Transkript der Aufnahme wurde noch nicht eingefügt
             (<code>src/lib/chatbot-config.ts</code>).
@@ -611,7 +627,7 @@ function EmptyState({
           </div>
         ) : (
           <div className="mt-6 flex flex-wrap justify-center gap-2">
-            {CHATBOT.suggestions.map((s) => (
+            {suggestions.map((s) => (
               <button
                 key={s}
                 type="button"
@@ -621,6 +637,17 @@ function EmptyState({
                 {s}
               </button>
             ))}
+            {CHATBOT.suggestions.length > SUGGESTIONS_COLLAPSED && (
+              <button
+                type="button"
+                onClick={() => setShowAll((v) => !v)}
+                className="rounded-full px-3 py-1.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                {showAll
+                  ? "Weniger anzeigen"
+                  : `Alle ${CHATBOT.suggestions.length} Fragen anzeigen`}
+              </button>
+            )}
           </div>
         )}
       </div>
