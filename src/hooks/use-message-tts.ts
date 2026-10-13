@@ -53,7 +53,9 @@ let browserUtterance: SpeechSynthesisUtterance | null = null;
 
 function pickGermanVoice(): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
+  // Jonas spricht → männliche deutsche Stimme bevorzugen, wenn das Gerät eine hat.
   return (
+    voices.find((v) => v.lang.startsWith("de") && /stefan|conrad|killian|florian|male|mann/i.test(v.name)) ??
     voices.find((v) => v.lang === "de-DE" && /google|natural|online/i.test(v.name)) ??
     voices.find((v) => v.lang.startsWith("de")) ??
     null
