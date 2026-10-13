@@ -9,10 +9,15 @@
 
 import { BOT, WISSEN, type WissensEintrag } from "@/lib/wissen";
 
-// Kleinschreiben, Umlaute/Akzente entfernen, Satzzeichen zu Leerzeichen.
+// Kleinschreiben, Umlaute zu ae/oe/ue, Akzente entfernen, Satzzeichen zu Leerzeichen.
+// Umlaute NICHT einfach weglassen: sonst wird „schön“ zu „schon“ und passt auf
+// „Hast du schon mal …?“ (ebenso „wäre“/„ware“, „für“/„fur“).
 export function normalisiere(text: string): string {
   return text
     .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/ß/g, "ss")
